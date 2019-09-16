@@ -1,0 +1,105 @@
+/*
+ * Copyright (c) 2014-2016 ISPRAS (http://www.ispras.ru)
+ * Institute for System Programming of the Russian Academy of Sciences
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * ee the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <verifier/common.h>
+#include <verifier/nondet.h>
+
+#include <linux/types.h>
+#include <linux/ldv/device.h>
+#include <verifier/memory.h>
+
+struct clk;
+
+struct clk *ldv_clk_get(void)
+{
+	struct clk *clk;
+
+	clk = ldv_zalloc_unknown_size();
+	ldv_assume(clk);
+
+	return clk;
+}
+
+
+// for arg_sign in clk2_arg_signs
+/* NOTE Initialize prepare counter to zero */
+int ldv_prepare_count{{ arg_sign.id }} = 0;
+/* NOTE Initialize enable counter to zero */
+int ldv_enable_count{{ arg_sign.id }} = 0;
+
+/* MODEL_FUNC Unprepare clock */
+void ldv_clk_unprepare{{ arg_sign.id }}(void)
+{
+  	/* ASSERT Clk '{{ arg_sign.id }}' should not be unprepared without preparing */
+	ldv_assert("linux:drivers:clk2::less initial decrement", ldv_prepare_count{{ arg_sign.id }} >= 1);
+    /* NOTE Decrease prepare counter */
+    ldv_prepare_count{{ arg_sign.id }}--;
+}
+
+/* MODEL_FUNC Prepare clock */
+int ldv_clk_prepare{{ arg_sign.id }}(void)
+{
+	int retval = ldv_undef_int();
+	if (!retval) {
+		/* NOTE Increase prepare counter */
+		ldv_prepare_count{{ arg_sign.id }}++;
+		ldv_assume(ldv_prepare_count{{ arg_sign.id }} < 3);
+	} else {
+		ldv_assume(retval < 0);
+	}
+	return retval;
+}
+
+/* MODEL_FUNC Disable clock */
+void ldv_clk_disable{{ arg_sign.id }}(void)
+{
+  	/* ASSERT Clk '{{ arg_sign.id }}' should not be disabled without enabling */
+	ldv_assert("linux:drivers:clk2::less initial decrement", ldv_enable_count{{ arg_sign.id }} >= 1);
+    /* NOTE Decrease enable counter */
+    ldv_enable_count{{ arg_sign.id }}--;
+}
+
+/* MODEL_FUNC Enable clock */
+int ldv_clk_enable{{ arg_sign.id }}(void)
+{
+	int retval = ldv_undef_int();
+	if (!retval) {
+		/* NOTE Increase enable counter */
+		ldv_enable_count{{ arg_sign.id }}++;
+		ldv_assume(ldv_enable_count{{ arg_sign.id }} < 3);
+	} else {
+		ldv_assume(retval < 0);
+	}
+	return retval;
+}
+
+/* MODEL_FUNC Prepare enable clock */
+int ldv_clk_prepare_enable{{ arg_sign.id }}(void)
+{
+	int ret;
+
+	ret = ldv_clk_prepare{{ arg_sign.id }}();
+	if (ret)
+		return ret;
+	ret = ldv_clk_enable{{ arg_sign.id }}();
+	if (ret) {
+		ldv_clk_unprepare{{ arg_sign.id }}();
+		return ret;
+	}
+	return 0;
+}
+// endfor
